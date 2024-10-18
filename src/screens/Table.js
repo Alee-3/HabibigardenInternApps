@@ -1,7 +1,27 @@
-import React, { useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, TextInput, StyleSheet, Modal, Pressable } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+    View,
+    Text,
+    FlatList,
+    TouchableOpacity,
+    TextInput,
+    Modal,
+    Pressable,
+    RefreshControl,
+} from 'react-native';
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
-import { faMagnifyingGlass, faArrowRight, faArrowLeft, faSliders } from '@fortawesome/free-solid-svg-icons';
+import {
+    faMagnifyingGlass,
+    faArrowRight,
+    faArrowLeft,
+    faSliders,
+    faSort,
+    faSortUp,
+    faSortDown,
+} from '@fortawesome/free-solid-svg-icons';
+import StatusBarNew from '../components/statusbars';
+import { MainNavbar } from '../components/navbars';
+import tw from '../utils/tailwind';
 
 const inventoryData = [
     { name: 'Selang', ctg: 'Tech', sku: 'SLG1', qty: 3, loc: 'WH1' },
@@ -10,41 +30,76 @@ const inventoryData = [
     { name: 'Cocopit', ctg: 'Agro', sku: 'CCP1', qty: 1, loc: 'WH5' },
     { name: 'Pupuk A', ctg: 'Agro', sku: 'PPUKA1', qty: 1, loc: 'WH2' },
     { name: 'Pupuk B', ctg: 'Agro', sku: 'PPUKB1', qty: 1, loc: 'WH1' },
-    { name: 'Baut', ctg: 'Tech', sku: 'BT1', qty: 1, loc: 'WH3' },
-    { name: 'Besi', ctg: 'Tech', sku: 'BS1', qty: 1, loc: 'WH16' },
-    { name: 'Case', ctg: 'Tech', sku: 'CS1', qty: 1, loc: 'WH1' },
-    { name: 'Stick', ctg: 'Tech', sku: 'STK1', qty: 1, loc: 'WH1' },
-    // Add more items here as needed
+    // Add more items as necessary...
 ];
 
-const TableScreen = () => {
+const TableScreen = ({ navigation }) => {
     const [search, setSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
     const [modalVisible, setModalVisible] = useState(false);
+    const [sortConfig, setSortConfig] = useState({ key: null, direction: null });
+    const [filterCategory, setFilterCategory] = useState(null);
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
-    // Filter data based on search input
-    const filteredData = inventoryData.filter(item =>
-        item.name.toLowerCase().includes(search.toLowerCase()) ||
-        item.ctg.toLowerCase().includes(search.toLowerCase()) ||
-        item.sku.toLowerCase().includes(search.toLowerCase())
-    );
+    // Debounce search input
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            setDebouncedSearch(search);
+        }, 300); // 300ms debounce
 
-    const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [search]);
+
+    // Filter data based on search and category
+    const filteredData = inventoryData.filter((item) => {
+        const matchesSearch =
+            item.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+            item.ctg.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+            item.sku.toLowerCase().includes(debouncedSearch.toLowerCase());
+
+        const matchesCategory = filterCategory
+            ? item.ctg === filterCategory
+            : true;
+
+        return matchesSearch && matchesCategory;
+    });
+
+    // Sorting
+    const sortedData = React.useMemo(() => {
+        if (sortConfig.key) {
+            return [...filteredData].sort((a, b) => {
+                if (a[sortConfig.key] < b[sortConfig.key]) {
+                    return sortConfig.direction === 'ascending' ? -1 : 1;
+                }
+                if (a[sortConfig.key] > b[sortConfig.key]) {
+                    return sortConfig.direction === 'ascending' ? 1 : -1;
+                }
+                return 0;
+            });
+        }
+        return filteredData;
+    }, [filteredData, sortConfig]);
+
+    // Calculate pagination
+    const totalPages = Math.ceil(sortedData.length / itemsPerPage);
     const startItem = (currentPage - 1) * itemsPerPage;
     const endItem = startItem + itemsPerPage;
-    const currentData = filteredData.slice(startItem, endItem);
+    const currentData = sortedData.slice(startItem, endItem);
 
     // Pagination Handlers
     const handleNextPage = () => {
         if (currentPage < totalPages) {
-            setCurrentPage(currentPage + 1);
+            setCurrentPage((prev) => prev + 1);
         }
     };
 
     const handlePrevPage = () => {
         if (currentPage > 1) {
-            setCurrentPage(currentPage - 1);
+            setCurrentPage((prev) => prev - 1);
         }
     };
 
@@ -54,18 +109,36 @@ const TableScreen = () => {
         setModalVisible(false); // Close modal
     };
 
+    // Sorting Handler
+    const handleSort = (key) => {
+        let direction = 'ascending';
+        if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+            direction = 'descending';
+        }
+        setSortConfig({ key, direction });
+    };
+
+    // Pull to Refresh Handler
+    const onRefresh = useCallback(() => {
+        setIsRefreshing(true);
+        setTimeout(() => {
+            setIsRefreshing(false);
+        }, 2000); // Simulated refresh delay
+    }, []);
+
     return (
-        <View style={styles.container}>
-            {/* Inventory Table Header */}
-            <View style={styles.headerContainer}>
-                <Text style={styles.title}>Inventory Table</Text>
-            </View>
+        <View style={tw`flex-1 bg-gray-100`}>
+            <StatusBarNew />
+            <MainNavbar
+                navigation={navigation}
+                title={'Inventory Table'}
+            />
 
             {/* Search Bar */}
-            <View style={styles.searchBarContainer}>
+            <View style={tw`flex-row items-center bg-white p-3 mb-2 shadow rounded-md`}>
                 <FontAwesomeIcon icon={faMagnifyingGlass} size={24} color="#000" />
                 <TextInput
-                    style={styles.searchInput}
+                    style={tw`flex-1 ml-2 text-base font-medium text-gray-600`}
                     placeholder="Search"
                     value={search}
                     onChangeText={setSearch}
@@ -75,66 +148,145 @@ const TableScreen = () => {
                 </TouchableOpacity>
             </View>
 
-            {/* Table Header */}
-            <View style={styles.tableHeader}>
-                <Text style={styles.headerCell}>Name</Text>
-                <Text style={styles.headerCell}>CTG</Text>
-                <Text style={styles.headerCell}>SKU</Text>
-                <Text style={styles.headerCell}>Qty</Text>
-                <Text style={styles.headerCell}>LOC</Text>
+            {/* Table Header with Sorting */}
+            <View style={tw`flex-row justify-between bg-blue-600 p-2 rounded-md`}>
+                {['name', 'ctg', 'sku', 'qty', 'loc'].map((key) => (
+                    <TouchableOpacity
+                        key={key}
+                        style={tw`flex-1 items-center`}
+                        onPress={() => handleSort(key)}
+                    >
+                        <View style={tw`flex-row items-center`}>
+                            <Text style={tw`text-white font-bold`}>
+                                {key.toUpperCase()}
+                            </Text>
+                            {sortConfig.key === key ? (
+                                sortConfig.direction === 'ascending' ? (
+                                    <FontAwesomeIcon
+                                        icon={faSortUp}
+                                        size={14}
+                                        color="#fff"
+                                    />
+                                ) : (
+                                    <FontAwesomeIcon
+                                        icon={faSortDown}
+                                        size={14}
+                                        color="#fff"
+                                    />
+                                )
+                            ) : (
+                                <FontAwesomeIcon
+                                    icon={faSort}
+                                    size={14}
+                                    color="#fff"
+                                />
+                            )}
+                        </View>
+                    </TouchableOpacity>
+                ))}
             </View>
 
-            {/* Table Data */}
             {currentData.length > 0 ? (
                 <FlatList
                     data={currentData}
-                    keyExtractor={(item, index) => index.toString()}
+                    keyExtractor={(item, index) => item.sku + index}
                     renderItem={({ item }) => (
-                        <View style={styles.row}>
-                            <Text style={styles.cell}>{item.name}</Text>
-                            <Text style={styles.cell}>{item.ctg}</Text>
-                            <Text style={styles.cell}>{item.sku}</Text>
-                            <Text style={styles.cell}>{item.qty}</Text>
-                            <Text style={styles.cell}>{item.loc}</Text>
+                        <View style={tw`flex-row justify-between p-2 bg-white my-1 rounded-md shadow`}>
+                            <Text style={tw`flex-1 text-center text-gray-700`}>{item.name}</Text>
+                            <Text style={tw`flex-1 text-center text-gray-700`}>{item.ctg}</Text>
+                            <Text style={tw`flex-1 text-center text-gray-700`}>{item.sku}</Text>
+                            <Text style={tw`flex-1 text-center text-gray-700`}>{item.qty}</Text>
+                            <Text style={tw`flex-1 text-center text-gray-700`}>{item.loc}</Text>
                         </View>
                     )}
+                    refreshControl={
+                        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+                    }
                 />
             ) : (
-                <Text style={styles.noDataText}>No items found</Text>
+                <Text style={tw`text-center text-red-600 mt-4`}>No items found</Text>
             )}
 
-            {/* Pagination */}
-            <View style={styles.pagination}>
-                <TouchableOpacity onPress={handlePrevPage} disabled={currentPage === 1}>
-                    <FontAwesomeIcon icon={faArrowLeft} size={24} color={currentPage === 1 ? '#ccc' : '#000'} />
+            <View style={tw`flex-row justify-center items-center my-4`}>
+                <TouchableOpacity
+                    onPress={handlePrevPage}
+                    disabled={currentPage === 1}
+                    style={tw`p-2`}
+                >
+                    <FontAwesomeIcon
+                        icon={faArrowLeft}
+                        size={24}
+                        color={currentPage === 1 ? '#ccc' : '#000'}
+                    />
                 </TouchableOpacity>
-                <Text style={styles.pageNumber}>{currentPage}</Text>
-                <TouchableOpacity onPress={handleNextPage} disabled={currentPage === totalPages}>
-                    <FontAwesomeIcon icon={faArrowRight} size={24} color={currentPage === totalPages ? '#ccc' : '#000'} />
+                <Text style={tw`mx-4 text-lg font-semibold text-gray-600`}>
+                    {currentPage} / {totalPages}
+                </Text>
+                <TouchableOpacity
+                    onPress={handleNextPage}
+                    disabled={currentPage === totalPages}
+                    style={tw`p-2`}
+                >
+                    <FontAwesomeIcon
+                        icon={faArrowRight}
+                        size={24}
+                        color={currentPage === totalPages ? '#ccc' : '#000'}
+                    />
                 </TouchableOpacity>
             </View>
 
-            {/* Modal for Items Per Page */}
+            {/* Modal for Items Per Page & Category Filter */}
             <Modal
                 animationType="slide"
                 transparent={true}
                 visible={modalVisible}
                 onRequestClose={() => setModalVisible(false)}
             >
-                <View style={styles.modalContainer}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Select Items Per Page</Text>
-                        <TouchableOpacity onPress={() => handleItemsPerPageChange(5)} style={styles.modalButton}>
-                            <Text style={styles.modalButtonText}>5 Items</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => handleItemsPerPageChange(10)} style={styles.modalButton}>
-                            <Text style={styles.modalButtonText}>10 Items</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => handleItemsPerPageChange(15)} style={styles.modalButton}>
-                            <Text style={styles.modalButtonText}>15 Items</Text>
-                        </TouchableOpacity>
-                        <Pressable style={styles.modalButtonClose} onPress={() => setModalVisible(false)}>
-                            <Text style={styles.modalButtonText}>Close</Text>
+                <View style={tw`flex-1 justify-center items-center bg-black bg-opacity-30`}>
+                    <View style={tw`w-80 bg-blue-600 p-5 rounded-md shadow-md`}>
+                        <Text style={tw`text-xl text-white font-bold mb-4`}>
+                            Filter & Display Options
+                        </Text>
+
+                        {/* Items Per Page Header */}
+                        <Text style={tw`text-lg text-white font-semibold mb-3`}>
+                            Items Per Page
+                        </Text>
+                        {[5, 10, 15].map((number) => (
+                            <TouchableOpacity
+                                key={number}
+                                onPress={() => handleItemsPerPageChange(number)}
+                                style={tw`w-full py-2 bg-white mb-2 rounded-md items-center`}
+                            >
+                                <Text style={tw`text-lg text-blue-600 font-semibold`}>
+                                    {number} Items
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+
+                        {/* Category Filter Header */}
+                        <Text style={tw`text-lg text-white font-semibold mb-3`}>
+                            Filter by Category
+                        </Text>
+                        {['All', 'Tech', 'Agro', 'Tools', 'Furniture', 'Office Supplies', 'Accessories'].map(
+                            (category) => (
+                                <TouchableOpacity
+                                    key={category}
+                                    onPress={() => setFilterCategory(category === 'All' ? null : category)}
+                                    style={tw`w-full py-2 bg-white mb-2 rounded-md items-center`}
+                                >
+                                    <Text style={tw`text-lg text-blue-600 font-semibold`}>
+                                        {category}
+                                    </Text>
+                                </TouchableOpacity>
+                            )
+                        )}
+
+                        <Pressable
+                            style={tw`w-full py-2 bg-gray-400 rounded-md items-center mt-3`}
+                            onPress={() => setModalVisible(false)}
+                        >
+                            <Text style={tw`text-white font-semibold`}>Close</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -142,150 +294,5 @@ const TableScreen = () => {
         </View>
     );
 };
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        padding: 15,
-        backgroundColor: '#f9f9f9',
-    },
-    headerContainer: {
-        alignItems: 'center',
-        paddingVertical: 15,
-        backgroundColor: '#2c3e50',
-        borderRadius: 10,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.2,
-        shadowRadius: 3,
-        elevation: 5,
-    },
-    title: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: '#ffffff',
-    },
-    searchBarContainer: {
-        backgroundColor: '#ffffff',
-        borderRadius: 15,
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 10,
-        marginVertical: 15,
-        borderWidth: 1,
-        borderColor: '#ddd',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 4,
-    },
-    searchInput: {
-        marginLeft: 10,
-        fontSize: 18,
-        fontWeight: '500',
-        color: '#333',
-        flex: 1,
-    },
-    tableHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingVertical: 12,
-        backgroundColor: '#34495e',
-        borderBottomWidth: 2,
-        borderBottomColor: '#aaa',
-        borderRadius: 8,
-    },
-    headerCell: {
-        flex: 1,
-        textAlign: 'center',
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: '#ffffff',
-    },
-    row: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingVertical: 15,
-        paddingHorizontal: 5,
-        borderBottomWidth: 1,
-        borderBottomColor: '#ddd',
-        backgroundColor: '#ffffff',
-        borderRadius: 8,
-        marginVertical: 5,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 3,
-    },
-    cell: {
-        flex: 1,
-        textAlign: 'center',
-        fontSize: 16,
-        color: '#333',
-    },
-    pagination: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginVertical: 20,
-    },
-    pageNumber: {
-        fontSize: 18,
-        fontWeight: '600',
-        marginHorizontal: 12,
-        color: '#333',
-    },
-    noDataText: {
-        textAlign: 'center',
-        fontSize: 18,
-        fontWeight: '500',
-        color: '#e74c3c',
-    },
-    modalContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.3)',
-    },
-    modalContent: {
-        width: 300,
-        padding: 20,
-        backgroundColor: '#fff',
-        borderRadius: 15,
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
-        elevation: 5,
-    },
-    modalTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        marginBottom: 20,
-    },
-    modalButton: {
-        width: '100%',
-        padding: 12,
-        backgroundColor: '#3498db',
-        marginBottom: 10,
-        borderRadius: 8,
-        alignItems: 'center',
-    },
-    modalButtonText: {
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
-    modalButtonClose: {
-        width: '100%',
-        padding: 12,
-        backgroundColor: '#aaa',
-        borderRadius: 8,
-        alignItems: 'center',
-    },
-});
 
 export default TableScreen;
